@@ -4,7 +4,13 @@ from datetime import datetime
 
 from deepagents import create_deep_agent
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
-from langchain.agents.middleware import ToolCallRequest, ToolErrorMiddleware
+from langchain.agents.middleware import (
+    ModelRequest,
+    ToolCallRequest,
+    ToolErrorMiddleware,
+    dynamic_prompt,
+)
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -68,6 +74,20 @@ SYSTEM_PROMPT = (
 )
 
 
+@dynamic_prompt
+def current_research_prompt(request: ModelRequest) -> SystemMessage:
+    """Add current research context on every model call, including calls in reused graphs."""
+    context = (
+        f"Today is {datetime.now().strftime('%Y-%m-%d')}. "
+        "Interpret latest, recent, this month, and this quarter relative to today. "
+        "Preserve periods explicitly supplied by the user. Otherwise, do not add a year or "
+        "specific quarter to web searches or research-agent tasks; let the research-agent "
+        "determine the most recent available period."
+    )
+    blocks = request.system_message.content_blocks if request.system_message else []
+    return SystemMessage(content=[*blocks, {"type": "text", "text": context}])
+
+
 @tool(parse_docstring=True)
 def web_search(query: str) -> str:
     """Search the web for company news, market data, or general information.
@@ -119,20 +139,24 @@ def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
         "description": "Delegate company / market research tasks. Give one topic at a time.",
         "system_prompt": (
             "You are a research assistant for a wealth management firm. "
-            f"Today is {datetime.now().strftime('%Y-%m-%d')}.\n"
             f"Use {search_tool.name} to gather company news, market data, or general info. "
             "Limit to 3 search calls. Cite sources."
         ),
         "tools": [search_tool],
+        "middleware": [current_research_prompt],
     }
     tools = [search_tool, get_client_profile, *extra_tools]
     # The default general-purpose subagent doesn't inherit main-agent middleware, so lookup errors would crash it.
-    general_purpose_subagent = {**GENERAL_PURPOSE_SUBAGENT, "tools": tools, "middleware": [client_lookup_errors]}
+    general_purpose_subagent = {
+        **GENERAL_PURPOSE_SUBAGENT,
+        "tools": tools,
+        "middleware": [client_lookup_errors, current_research_prompt],
+    }
     return create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
-        middleware=[client_lookup_errors],
+        middleware=[client_lookup_errors, current_research_prompt],
         subagents=[research_subagent, general_purpose_subagent],
         checkpointer=MemorySaver(),
     )

@@ -1,13 +1,17 @@
 """Deployable client-research agent: the notebook agent's tools plus AGENTS.md, skills and store-backed memories."""
 
 import os
-from datetime import datetime
 
 from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StoreBackend
 from langchain_core.language_models import BaseChatModel
 
-from agents.client_research_agent import client_lookup_errors, get_client_profile, web_search
+from agents.client_research_agent import (
+    client_lookup_errors,
+    current_research_prompt,
+    get_client_profile,
+    web_search,
+)
 from utils.models import make_model
 
 AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -24,11 +28,11 @@ research_subagent = {
     "description": "Delegate company / market research tasks. Give one topic at a time.",
     "system_prompt": (
         "You are a research assistant for a wealth management firm. "
-        f"Today is {datetime.now().strftime('%Y-%m-%d')}.\n"
         "Use web_search to gather company news, market data, or general info. "
         "Structure findings with clear headings and inline citations. Limit to 3 search calls."
     ),
     "tools": [web_search],
+    "middleware": [current_research_prompt],
 }
 
 
@@ -42,7 +46,7 @@ def build_deployable_agent(model: BaseChatModel):
         model=model,
         tools=[web_search, get_client_profile],
         system_prompt="You are an expert client research assistant for a wealth management firm.",
-        middleware=[client_lookup_errors],
+        middleware=[client_lookup_errors, current_research_prompt],
         memory=["/AGENTS.md"],
         skills=["/skills/"],
         subagents=[research_subagent],
