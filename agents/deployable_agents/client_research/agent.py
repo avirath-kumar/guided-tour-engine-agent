@@ -7,7 +7,13 @@ from deepagents import FilesystemPermission, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StoreBackend
 from langchain_core.language_models import BaseChatModel
 
-from agents.client_research_agent import client_lookup_errors, get_client_profile, web_search
+from agents.client_research_agent import (
+    RESEARCH_GROUNDING_PROMPT,
+    SYSTEM_PROMPT,
+    client_lookup_errors,
+    get_client_profile,
+    web_search,
+)
 from utils.models import make_model
 
 AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +32,8 @@ research_subagent = {
         "You are a research assistant for a wealth management firm. "
         f"Today is {datetime.now().strftime('%Y-%m-%d')}.\n"
         "Use web_search to gather company news, market data, or general info. "
-        "Structure findings with clear headings and inline citations. Limit to 3 search calls."
+        "Structure findings with clear headings. Limit to 3 search calls. "
+        + RESEARCH_GROUNDING_PROMPT
     ),
     "tools": [web_search],
 }
@@ -41,7 +48,7 @@ def build_deployable_agent(model: BaseChatModel):
     return create_deep_agent(
         model=model,
         tools=[web_search, get_client_profile],
-        system_prompt="You are an expert client research assistant for a wealth management firm.",
+        system_prompt=SYSTEM_PROMPT,
         middleware=[client_lookup_errors],
         memory=["/AGENTS.md"],
         skills=["/skills/"],

@@ -60,11 +60,27 @@ CLIENTS = {
     },
 }
 
+RESEARCH_GROUNDING_PROMPT = (
+    "Ground every research claim in search results returned for the current task, with the "
+    "supporting result URL inline. Include figures, dates, ratings, analyst or bank opinions, "
+    "and quotes only when explicitly present in those results. Use quotation marks for source "
+    "text only when copied verbatim from the result. If a result is marked "
+    "'[reference results: background, not live news]' or '[fallback content; live search unavailable', "
+    "state that live data was unavailable and use only the qualitative context that result contains; "
+    "omit its figures, dates, ratings, attributed opinions, and quotes. Omit unsupported details "
+    "instead of filling gaps from model memory. "
+)
+
 SYSTEM_PROMPT = (
     "You are a client research assistant for a wealth management firm. "
     "Help relationship managers prep for client meetings by looking up "
     "client portfolios and researching their holdings or relevant market "
-    "events. Delegate deep research topics to the research-agent."
+    "events. Delegate deep research topics to the research-agent. "
+    + RESEARCH_GROUNDING_PROMPT
+    + "Apply these rules to direct searches and delegated research alike: omit subagent claims "
+    "without supporting search-result evidence, preserve inline source URLs and live-data "
+    "limitations in briefs and saved notes, and never present model knowledge as research-tool "
+    "findings. Client-profile facts returned by get_client_profile remain available for briefings."
 )
 
 
@@ -121,7 +137,8 @@ def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
             "You are a research assistant for a wealth management firm. "
             f"Today is {datetime.now().strftime('%Y-%m-%d')}.\n"
             f"Use {search_tool.name} to gather company news, market data, or general info. "
-            "Limit to 3 search calls. Cite sources."
+            "Limit to 3 search calls. "
+            + RESEARCH_GROUNDING_PROMPT
         ),
         "tools": [search_tool],
     }
