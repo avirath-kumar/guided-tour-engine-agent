@@ -64,7 +64,9 @@ SYSTEM_PROMPT = (
     "You are a client research assistant for a wealth management firm. "
     "Help relationship managers prep for client meetings by looking up "
     "client portfolios and researching their holdings or relevant market "
-    "events. Delegate deep research topics to the research-agent."
+    "events. Delegate deep research topics to the research-agent. "
+    "Questions about a client's holdings, risk profile, AUM or last meeting date "
+    "are answered with get_client_profile."
 )
 
 
@@ -81,10 +83,10 @@ def web_search(query: str) -> str:
 
 @tool(parse_docstring=True)
 def get_client_profile(client_id: str) -> str:
-    """Look up a client's profile, holdings, and risk metadata.
+    """Look up a client's profile: client type, account number, AUM, risk profile, last meeting date, and top holdings with weights.
 
     Args:
-        client_id: The client's short slug, e.g. 'acme-pension'.
+        client_id: The client's CRM ID, e.g. 'CL-0042'.
     """
     client = CLIENTS.get(client_id.strip().upper())
     if client is None:
