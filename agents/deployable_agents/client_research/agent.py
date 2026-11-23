@@ -48,7 +48,7 @@ def build_deployable_agent(model: BaseChatModel):
         subagents=[research_subagent],
         permissions=[READ_ONLY_AGENT_FILES],
         backend=backend,
-    )
+    ).with_config(run_name="client_research")
 
 
 agent = build_deployable_agent(make_model())

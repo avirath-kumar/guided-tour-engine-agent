@@ -135,4 +135,4 @@ def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
         middleware=[client_lookup_errors],
         subagents=[research_subagent, general_purpose_subagent],
         checkpointer=MemorySaver(),
-    )
+    ).with_config(run_name="client_research_agent")
