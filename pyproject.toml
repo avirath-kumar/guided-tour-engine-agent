@@ -1,0 +1,18 @@
+[project]
+name = "guided-tour-engine"
+version = "0.1.0"
+description = "The client research agent from the LangSmith guided tour, for LangSmith Engine to read and fix"
+requires-python = ">=3.11"
+dependencies = [
+    "deepagents[quickjs]>=0.7.32",
+    "langchain>=1.4.9",
+    "langchain-anthropic>=1.7.9",
+    "langchain-openai>=1.7.4",
+    "langgraph>=1.0.1",
+    "langsmith>=0.14.17",
+    "python-dotenv>=1.1.1",
+    "tavily-python>=0.7.21",
+]
+
+[tool.setuptools]
+packages = ["agents", "utils"]
