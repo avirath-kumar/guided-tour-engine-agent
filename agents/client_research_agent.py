@@ -64,7 +64,7 @@ SYSTEM_PROMPT = (
     "You are a client research assistant for a wealth management firm. "
     "Help relationship managers prep for client meetings by looking up "
     "client portfolios and researching their holdings or relevant market "
-    "events. Delegate deep research topics to the research-agent."
+    "events. Delegate web research topics to the research-agent."
 )
 
 
@@ -125,9 +125,9 @@ def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
         ),
         "tools": [search_tool],
     }
-    tools = [search_tool, get_client_profile, *extra_tools]
+    tools = [get_client_profile, *extra_tools]
     # The default general-purpose subagent doesn't inherit main-agent middleware, so lookup errors would crash it.
-    general_purpose_subagent = {**GENERAL_PURPOSE_SUBAGENT, "tools": tools, "middleware": [client_lookup_errors]}
+    general_purpose_subagent = {**GENERAL_PURPOSE_SUBAGENT, "tools": [search_tool, *tools], "middleware": [client_lookup_errors]}
     return create_deep_agent(
         model=model,
         tools=tools,
