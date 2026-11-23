@@ -1,12 +1,21 @@
 """Client research deep agent for a wealth management firm: client profiles plus delegated web research."""
 
+import re
+from dataclasses import replace
 from datetime import datetime
 
 from deepagents import create_deep_agent
 from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
-from langchain.agents.middleware import ToolCallRequest, ToolErrorMiddleware
+from langchain.agents.middleware import (
+    PIIMiddleware,
+    ToolCallRequest,
+    ToolErrorMiddleware,
+)
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable, RunnableBinding
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
 
 from utils.models import make_model
 from utils.search import resilient_tavily_search
@@ -110,6 +119,61 @@ def _client_lookup_error(exc: Exception, request: ToolCallRequest) -> str | None
 client_lookup_errors = ToolErrorMiddleware(_client_lookup_error, tools=[get_client_profile])
 
 
+CREDENTIAL_PATTERN = re.compile(
+    r"(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})(?![A-Za-z0-9_])"
+)
+
+
+def _sanitize_credentials(value):
+    if isinstance(value, str):
+        return CREDENTIAL_PATTERN.sub("[REDACTED_CREDENTIAL]", value)
+    if isinstance(value, BaseMessage):
+        return value.model_copy(update=_sanitize_credentials(value.model_dump()))
+    if isinstance(value, Command):
+        return replace(
+            value,
+            update=_sanitize_credentials(value.update),
+            resume=_sanitize_credentials(value.resume),
+        )
+    if isinstance(value, dict):
+        return {key: _sanitize_credentials(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_sanitize_credentials(item) for item in value)
+    return value
+
+
+class _CredentialProtectedAgent(RunnableBinding):
+    # Sanitize outside the graph: before-model hooks run after the input checkpoint is saved.
+    def invoke(self, input, config=None, **kwargs):
+        return super().invoke(_sanitize_credentials(input), config, **kwargs)
+
+    async def ainvoke(self, input, config=None, **kwargs):
+        return await super().ainvoke(_sanitize_credentials(input), config, **kwargs)
+
+    def stream(self, input, config=None, **kwargs):
+        yield from super().stream(_sanitize_credentials(input), config, **kwargs)
+
+    async def astream(self, input, config=None, **kwargs):
+        async for chunk in super().astream(
+            _sanitize_credentials(input), config, **kwargs
+        ):
+            yield chunk
+
+    def astream_events(self, input, config=None, **kwargs):
+        return super().astream_events(_sanitize_credentials(input), config, **kwargs)
+
+    def astream_log(self, input, config=None, **kwargs):
+        return super().astream_log(_sanitize_credentials(input), config, **kwargs)
+
+    batch = Runnable.batch
+    abatch = Runnable.abatch
+    batch_as_completed = Runnable.batch_as_completed
+    abatch_as_completed = Runnable.abatch_as_completed
+    transform = Runnable.transform
+    atransform = Runnable.atransform
+
+
 def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
     """Return a fresh client-research deep agent; arguments swap the model, the search tool or add tools."""
     model = model or make_model()
@@ -126,13 +190,23 @@ def build_client_research_agent(model=None, search_tool=None, extra_tools=()):
         "tools": [search_tool],
     }
     tools = [search_tool, get_client_profile, *extra_tools]
-    # The default general-purpose subagent doesn't inherit main-agent middleware, so lookup errors would crash it.
-    general_purpose_subagent = {**GENERAL_PURPOSE_SUBAGENT, "tools": tools, "middleware": [client_lookup_errors]}
-    return create_deep_agent(
+    middleware = [
+        PIIMiddleware(
+            "credential", detector=CREDENTIAL_PATTERN.pattern, strategy="redact"
+        ),
+        client_lookup_errors,
+    ]
+    general_purpose_subagent = {
+        **GENERAL_PURPOSE_SUBAGENT,
+        "tools": tools,
+        "middleware": middleware,
+    }
+    agent = create_deep_agent(
         model=model,
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
-        middleware=[client_lookup_errors],
+        middleware=middleware,
         subagents=[research_subagent, general_purpose_subagent],
         checkpointer=MemorySaver(),
     )
+    return _CredentialProtectedAgent(bound=agent)
