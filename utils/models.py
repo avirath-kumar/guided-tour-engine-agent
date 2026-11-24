@@ -1,6 +1,7 @@
 """Model setup for every module and agent. Pick exactly one MODEL_SPEC / API_KEY_ENV pair below."""
 
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -48,6 +49,12 @@ def make_model(**overrides):
     kwargs = {**MODEL_SPEC, **overrides}
     if API_KEY_ENV is None:
         return init_chat_model(**kwargs)
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", API_KEY_ENV):
+        raise RuntimeError(
+            "API_KEY_ENV in utils/models.py must be the name of an environment variable "
+            "(for example LANGSMITH_GATEWAY_API_KEY), not the API key itself. "
+            "Put the key in .env under that name."
+        )
     api_key = os.getenv(API_KEY_ENV)
     if not api_key:
         raise RuntimeError(f"Set {API_KEY_ENV} in .env (see utils/models.py for the model in use).")
