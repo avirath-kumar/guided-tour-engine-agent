@@ -1,5 +1,6 @@
 """Client research deep agent for a wealth management firm: client profiles plus delegated web research."""
 
+import unicodedata
 from datetime import datetime
 
 from deepagents import create_deep_agent
@@ -79,19 +80,36 @@ def web_search(query: str) -> str:
     return resilient_tavily_search(query, max_retries=2)
 
 
-@tool(parse_docstring=True)
-def get_client_profile(client_id: str) -> str:
-    """Look up a client's profile, holdings, and risk metadata.
+def _normalize_client_name(name: str) -> str:
+    """Normalize client names for exact and whole-token matching."""
+    name = name.lower().replace("-", " ").replace("_", " ")
+    return " ".join("".join(c for c in name if not unicodedata.category(c).startswith("P")).split())
 
-    Args:
-        client_id: The client's short slug, e.g. 'acme-pension'.
-    """
-    client = CLIENTS.get(client_id.strip().upper())
+
+@tool
+def get_client_profile(client_id: str) -> str:
+    """Look up profile, holdings, and risk by client_id: a CRM ID (CL-0042) or full client name (Acme Pension Fund)."""
+    resolved_id = client_id.strip().upper()
+    client = CLIENTS.get(resolved_id)
+    header_id = ""
     if client is None:
-        raise ValueError(f"No client found with ID '{client_id}'.")
+        name = _normalize_client_name(client_id)
+        names = {key: _normalize_client_name(value["name"]) for key, value in CLIENTS.items()}
+        matches = [key for key, value in names.items() if name and value == name]
+        if not matches and name:
+            matches = [key for key, value in names.items() if set(name.split()) <= set(value.split())]
+        if len(matches) != 1:
+            guidance = "Provide a CRM ID like CL-0042 or the full client name; do not guess slugs."
+            if matches:
+                candidates = ", ".join(CLIENTS[key]["name"] for key in matches)
+                raise ValueError(f"Ambiguous client '{client_id}'. Candidates: {candidates}. {guidance}")
+            raise ValueError(f"No client found for '{client_id}'. {guidance}")
+        resolved_id = matches[0]
+        client = CLIENTS[resolved_id]
+        header_id = f" [{resolved_id}]"
     holdings = "\n".join(f"  - {ticker}: {weight:.1%}" for ticker, weight in client["top_holdings"])
     return (
-        f"**{client['name']}** ({client['type']})\n"
+        f"**{client['name']}** ({client['type']}){header_id}\n"
         f"Account: {client['account_number']}\n"
         f"AUM: ${client['aum_usd']:,}\n"
         f"Risk profile: {client['risk_profile']}\n"
